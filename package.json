@@ -2,7 +2,7 @@
   "name": "mystream",
   "version": "1.0.0",
   "description": "this is my first web-2 project",
-  "type": "commonjs",
+  "type": "module",
   "keywords": [
     "javascript",
     "backend"
@@ -11,10 +11,17 @@
   "author": "Pritul Singh",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon -r dotenv/config --experimental-json-modules src/index.js"
   },
   "devDependencies": {
     "nodemon": "^3.1.14",
     "prettier": "^3.8.3"
+  },
+  "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "mongoose": "^9.6.2"
   }
 }
