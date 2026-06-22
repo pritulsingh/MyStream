@@ -26,6 +26,27 @@ const uploadOnCloudinary = async (localFilePath) => {
     }
 }
 
+const deleteFromCloudinary = async (fileUrl, resourceType = "image") => {
+    try {
+        if (!fileUrl) return null
 
+        // extract the public_id from the cloudinary url
+        // e.g. https://res.cloudinary.com/<cloud_name>/video/upload/v1234567/folder/abc123.mp4
+        // public_id = folder/abc123  (no extension, no version)
+        const publicId = fileUrl
+            .split("/")
+            .slice(-1)[0]   // "abc123.mp4"
+            .split(".")[0]  // "abc123"
 
-export {uploadOnCloudinary}
+        const response = await cloudinary.uploader.destroy(publicId, {
+            resource_type: resourceType // "image" or "video"
+        })
+
+        return response
+    } catch (error) {
+        console.log("Error while deleting file from cloudinary", error)
+        return null
+    }
+}
+
+export {uploadOnCloudinary, deleteFromCloudinary}
