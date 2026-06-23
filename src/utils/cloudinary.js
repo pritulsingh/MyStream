@@ -1,7 +1,6 @@
 import {v2 as cloudinary} from "cloudinary"
 import fs from "fs"
 
-
 cloudinary.config({ 
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME, 
   api_key: process.env.CLOUDINARY_API_KEY, 
@@ -11,17 +10,13 @@ cloudinary.config({
 const uploadOnCloudinary = async (localFilePath) => {
     try {
         if (!localFilePath) return null
-        //upload the file on cloudinary
         const response = await cloudinary.uploader.upload(localFilePath, {
             resource_type: "auto"
         })
-        // file has been uploaded successfull
-        //console.log("file is uploaded on cloudinary ", response.url);
         fs.unlinkSync(localFilePath)
         return response;
-
     } catch (error) {
-        fs.unlinkSync(localFilePath) // remove the locally saved temporary file as the upload operation got failed
+        fs.unlinkSync(localFilePath)
         return null;
     }
 }
@@ -30,16 +25,20 @@ const deleteFromCloudinary = async (fileUrl, resourceType = "image") => {
     try {
         if (!fileUrl) return null
 
-        // extract the public_id from the cloudinary url
-        // e.g. https://res.cloudinary.com/<cloud_name>/video/upload/v1234567/folder/abc123.mp4
-        // public_id = folder/abc123  (no extension, no version)
-        const publicId = fileUrl
-            .split("/")
-            .slice(-1)[0]   // "abc123.mp4"
-            .split(".")[0]  // "abc123"
+        // FIX: old split-based extraction broke for files inside folders.
+        // e.g. ".../upload/v1234567/videos/abc123.mp4" → public_id = "videos/abc123"
+        // Regex grabs everything between "/upload/v<digits>/" and the file extension.
+        const matches = fileUrl.match(/\/upload\/(?:v\d+\/)?(.+)\.\w+$/)
+
+        if (!matches?.[1]) {
+            console.log("Could not extract public_id from URL:", fileUrl)
+            return null
+        }
+
+        const publicId = matches[1]
 
         const response = await cloudinary.uploader.destroy(publicId, {
-            resource_type: resourceType // "image" or "video"
+            resource_type: resourceType
         })
 
         return response

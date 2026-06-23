@@ -106,37 +106,33 @@ const publishAVideo = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Title and description are required")
     }
 
-    // multer puts the files here because of `upload.fields([...])`
     const videoFileLocalPath = req.files?.videoFile?.[0]?.path
     const thumbnailLocalPath = req.files?.thumbnail?.[0]?.path
 
-    if (!videoFileLocalPath) {
-        throw new ApiError(400, "Video file is required")
-    }
-    if (!thumbnailLocalPath) {
-        throw new ApiError(400, "Thumbnail is required")
-    }
+    if (!videoFileLocalPath) throw new ApiError(400, "Video file is required")
+    if (!thumbnailLocalPath) throw new ApiError(400, "Thumbnail is required")
 
     const videoFile = await uploadOnCloudinary(videoFileLocalPath)
     const thumbnail = await uploadOnCloudinary(thumbnailLocalPath)
 
-    if (!videoFile) {
-        throw new ApiError(500, "Failed to upload video file")
-    }
-    if (!thumbnail) {
-        throw new ApiError(500, "Failed to upload thumbnail")
-    }
+    if (!videoFile) throw new ApiError(500, "Failed to upload video file")
+    if (!thumbnail) throw new ApiError(500, "Failed to upload thumbnail")
 
-    const video = await Video.create({
-        videoFile: videoFile.url,
-        thumbnail: thumbnail.url,
-        title,
-        description,
-        duration: videoFile.duration, // Cloudinary returns this for video uploads
-        owner: req.user?._id
-    })
-
-    if (!video) {
+    // FIX: if DB create fails, clean up both Cloudinary assets that already
+    // uploaded — otherwise they sit on Cloudinary forever with no DB record.
+    let video
+    try {
+        video = await Video.create({
+            videoFile: videoFile.url,
+            thumbnail: thumbnail.url,
+            title,
+            description,
+            duration: videoFile.duration,
+            owner: req.user?._id
+        })
+    } catch (error) {
+        await deleteFromCloudinary(videoFile.url, "video")
+        await deleteFromCloudinary(thumbnail.url, "image")
         throw new ApiError(500, "Something went wrong while publishing the video")
     }
 
@@ -152,11 +148,15 @@ const getVideoById = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Invalid video id")
     }
 
+    // FIX: increment views BEFORE fetching so the document we return already
+    // has the updated count. The old approach fetched first, incremented after,
+    // so the client always saw a count that was 1 behind.
+    // { new: true } is not needed here since we re-fetch via aggregate below.
+    await Video.findByIdAndUpdate(videoId, { $inc: { views: 1 } })
+
     const video = await Video.aggregate([
         {
-            $match: {
-                _id: new mongoose.Types.ObjectId(videoId)
-            }
+            $match: { _id: new mongoose.Types.ObjectId(videoId) }
         },
         {
             $lookup: {
@@ -165,29 +165,16 @@ const getVideoById = asyncHandler(async (req, res) => {
                 foreignField: "_id",
                 as: "ownerDetails",
                 pipeline: [
-                    {
-                        $project: {
-                            username: 1,
-                            fullName: 1,
-                            avatar: 1
-                        }
-                    }
+                    { $project: { username: 1, fullName: 1, avatar: 1 } }
                 ]
             }
         },
-        {
-            $unwind: "$ownerDetails"
-        }
+        { $unwind: "$ownerDetails" }
     ])
 
     if (!video?.length) {
         throw new ApiError(404, "Video not found")
     }
-
-    // increment views every time the video is actually fetched
-    await Video.findByIdAndUpdate(videoId, {
-        $inc: { views: 1 }
-    })
 
     return res
         .status(200)
@@ -208,11 +195,8 @@ const updateVideo = asyncHandler(async (req, res) => {
 
     const video = await Video.findById(videoId)
 
-    if (!video) {
-        throw new ApiError(404, "Video not found")
-    }
+    if (!video) throw new ApiError(404, "Video not found")
 
-    // only the owner can update their video
     if (video.owner.toString() !== req.user?._id.toString()) {
         throw new ApiError(403, "You are not allowed to update this video")
     }
@@ -221,7 +205,6 @@ const updateVideo = asyncHandler(async (req, res) => {
     if (title?.trim()) updateData.title = title
     if (description?.trim()) updateData.description = description
 
-    // `upload.single("thumbnail")` puts the file on req.file (singular)
     const thumbnailLocalPath = req.file?.path
     let newThumbnail
 
@@ -239,9 +222,16 @@ const updateVideo = asyncHandler(async (req, res) => {
         { new: true }
     )
 
-    // delete the old thumbnail from Cloudinary AFTER the DB update succeeds
+    // FIX: wrapped in its own try/catch so if old thumbnail cleanup fails on
+    // Cloudinary, the API still returns 200 — the update itself succeeded.
+    // Previously this would throw and the client would get a 500 even though
+    // the video was updated correctly.
     if (newThumbnail) {
-        await deleteFromCloudinary(video.thumbnail)
+        try {
+            await deleteFromCloudinary(video.thumbnail, "image")
+        } catch (error) {
+            console.log("Old thumbnail cleanup failed (non-critical):", error)
+        }
     }
 
     return res
@@ -258,23 +248,21 @@ const deleteVideo = asyncHandler(async (req, res) => {
 
     const video = await Video.findById(videoId)
 
-    if (!video) {
-        throw new ApiError(404, "Video not found")
-    }
+    if (!video) throw new ApiError(404, "Video not found")
 
     if (video.owner.toString() !== req.user?._id.toString()) {
         throw new ApiError(403, "You are not allowed to delete this video")
     }
 
-    const deletedVideo = await Video.findByIdAndDelete(videoId)
+    // FIX: delete Cloudinary assets BEFORE the DB record.
+    // Old order was: delete DB → delete Cloudinary.
+    // If Cloudinary failed in that order, the DB record was already gone
+    // and you had orphan files with nothing pointing to them.
+    // Now if Cloudinary fails, the DB record is still intact — nothing is lost.
+    await deleteFromCloudinary(video.videoFile, "video")
+    await deleteFromCloudinary(video.thumbnail, "image")
 
-    if (!deletedVideo) {
-        throw new ApiError(500, "Failed to delete the video, please try again")
-    }
-
-    // clean up Cloudinary assets too
-    await deleteFromCloudinary(video.videoFile)
-    await deleteFromCloudinary(video.thumbnail)
+    await Video.findByIdAndDelete(videoId)
 
     return res
         .status(200)
@@ -290,9 +278,7 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
 
     const video = await Video.findById(videoId)
 
-    if (!video) {
-        throw new ApiError(404, "Video not found")
-    }
+    if (!video) throw new ApiError(404, "Video not found")
 
     if (video.owner.toString() !== req.user?._id.toString()) {
         throw new ApiError(403, "You are not allowed to change this video's publish status")
@@ -300,9 +286,7 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
 
     const updatedVideo = await Video.findByIdAndUpdate(
         videoId,
-        {
-            $set: { isPublished: !video.isPublished }
-        },
+        { $set: { isPublished: !video.isPublished } },
         { new: true }
     )
 
@@ -316,7 +300,6 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
             )
         )
 })
-
 export {
     getAllVideos,
     publishAVideo,
