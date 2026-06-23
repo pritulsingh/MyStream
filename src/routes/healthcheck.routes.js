@@ -1,8 +1,10 @@
-import { Router } from 'express';
-import { healthcheck } from "../controllers/healthcheck.controller.js"
+import { ApiResponse } from "../utils/ApiResponse.js"
+import { asyncHandler } from "../utils/asyncHandler.js"
 
-const router = Router();
+const healthcheck = asyncHandler(async (req, res) => {
+    return res
+        .status(200)
+        .json(new ApiResponse(200, { status: "OK" }, "Server is up and running"))
+})
 
-router.route('/').get(healthcheck);
-
-export default router
+export { healthcheck }
