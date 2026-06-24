@@ -1,8 +1,10 @@
-import mongoose, {isValidObjectId} from "mongoose"
-import {Playlist} from "../models/playlist.model.js"
-import {ApiError} from "../utils/ApiError.js"
-import {ApiResponse} from "../utils/ApiResponse.js"
-import {asyncHandler} from "../utils/asyncHandler.js"
+import { isValidObjectId } from "mongoose"
+import { Playlist } from "../models/playlist.model.js"
+import { Video } from "../models/video.model.js"
+import { User } from "../models/user.model.js"
+import { ApiError } from "../utils/ApiError.js"
+import { ApiResponse } from "../utils/ApiResponse.js"
+import { asyncHandler } from "../utils/asyncHandler.js"
 
 
 const createPlaylist = asyncHandler(async (req, res) => {
@@ -13,8 +15,8 @@ const createPlaylist = asyncHandler(async (req, res) => {
     }
 
     const playlist = await Playlist.create({
-        name,
-        description,
+        name: name.trim(),
+        description: description.trim(),
         owner: req.user?._id
     })
 
@@ -34,6 +36,12 @@ const getUserPlaylists = asyncHandler(async (req, res) => {
 
     if (!isValidObjectId(userId)) {
         throw new ApiError(400, "Invalid user id")
+    }
+
+    // Check if user exists
+    const user = await User.findById(userId)
+    if (!user) {
+        throw new ApiError(404, "User not found")
     }
 
     const playlists = await Playlist.find({
@@ -100,6 +108,12 @@ const addVideoToPlaylist = asyncHandler(async (req, res) => {
         throw new ApiError(403, "Not authorized")
     }
 
+    // Check if video exists
+    const video = await Video.findById(videoId)
+    if (!video) {
+        throw new ApiError(404, "Video not found")
+    }
+
     const updatedPlaylist = await Playlist.findByIdAndUpdate(
         playlistId,
         {
@@ -108,7 +122,13 @@ const addVideoToPlaylist = asyncHandler(async (req, res) => {
             }
         },
         { new: true }
-    )
+    ).populate({
+        path: "videos",
+        populate: {
+            path: "owner",
+            select: "username fullName avatar"
+        }
+    })
 
     return res
         .status(200)
@@ -138,6 +158,14 @@ const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
         throw new ApiError(403, "Not authorized")
     }
 
+    // Fix: compare as strings since playlist.videos contains ObjectIds
+    const exists = playlist.videos.some(
+        (id) => id.toString() === videoId
+    )
+    if (!exists) {
+        throw new ApiError(404, "Video not found in playlist")
+    }
+
     const updatedPlaylist = await Playlist.findByIdAndUpdate(
         playlistId,
         {
@@ -146,7 +174,13 @@ const removeVideoFromPlaylist = asyncHandler(async (req, res) => {
             }
         },
         { new: true }
-    )
+    ).populate({
+        path: "videos",
+        populate: {
+            path: "owner",
+            select: "username fullName avatar"
+        }
+    })
 
     return res
         .status(200)
@@ -209,8 +243,13 @@ const updatePlaylist = asyncHandler(async (req, res) => {
 
     const updateData = {}
 
-    if (name?.trim()) updateData.name = name
-    if (description?.trim()) updateData.description = description
+    if (name?.trim()) updateData.name = name.trim()
+    if (description?.trim()) updateData.description = description.trim()
+
+    // Ensure at least one field is provided
+    if (Object.keys(updateData).length === 0) {
+        throw new ApiError(400, "At least one field (name or description) is required")
+    }
 
     const updatedPlaylist = await Playlist.findByIdAndUpdate(
         playlistId,
