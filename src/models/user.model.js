@@ -1,4 +1,4 @@
-import mongoose, {Schema} from "mongoose";
+import mongoose, { Schema } from "mongoose";
 import jwt from "jsonwebtoken"
 import bcrypt from "bcrypt"
 
@@ -16,8 +16,10 @@ const userSchema = Schema(
             type: String,
             required: true,
             unique: true,
-            lowercase: true, 
+            lowercase: true,
             trim: true,
+            index: true     // FIX: added index — login queries filter by email,
+                            // index prevents full collection scan on every login
         },
         fullName: {
             type: String,
@@ -39,9 +41,8 @@ const userSchema = Schema(
             }
         ],
         password: {
-            type: String, // challenge password should not be pure string
-            // thus will use bcrypt
-            required: [true,'Password is required']
+            type: String,
+            required: [true, "Password is required"]
         },
         refreshToken: {
             type: String
@@ -53,16 +54,21 @@ const userSchema = Schema(
 )
 
 userSchema.pre("save", async function (next) {
-    if(!this.isModified("password")) return;
+    if (!this.isModified("password")) return next()  // FIX: was missing next()
+                                                      // without it, middleware
+                                                      // exits but never signals
+                                                      // Mongoose to continue,
+                                                      // causing requests to hang
 
     this.password = await bcrypt.hash(this.password, 10)
+    next()
 })
 
 userSchema.methods.isPasswordCorrect = async function (password) {
-    return await bcrypt.compare(password,this.password)
+    return await bcrypt.compare(password, this.password)
 }
 
-userSchema.methods.generateAccessToken = function(){
+userSchema.methods.generateAccessToken = function () {
     return jwt.sign(
         {
             _id: this._id,
@@ -76,7 +82,8 @@ userSchema.methods.generateAccessToken = function(){
         }
     )
 }
-userSchema.methods.generateRefreshToken = function(){
+
+userSchema.methods.generateRefreshToken = function () {
     return jwt.sign(
         {
             _id: this._id,
@@ -88,4 +95,4 @@ userSchema.methods.generateRefreshToken = function(){
     )
 }
 
-export const User = mongoose.model("User",userSchema)
+export const User = mongoose.model("User", userSchema)
