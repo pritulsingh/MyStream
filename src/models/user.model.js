@@ -53,15 +53,10 @@ const userSchema = Schema(
     }
 )
 
-userSchema.pre("save", async function (next) {
-    if (!this.isModified("password")) return next()  // FIX: was missing next()
-                                                      // without it, middleware
-                                                      // exits but never signals
-                                                      // Mongoose to continue,
-                                                      // causing requests to hang
+userSchema.pre("save", async function () {
+    if(!this.isModified("password")) return;
 
     this.password = await bcrypt.hash(this.password, 10)
-    next()
 })
 
 userSchema.methods.isPasswordCorrect = async function (password) {
