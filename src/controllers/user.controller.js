@@ -5,6 +5,7 @@ import { uploadOnCloudinary, deleteFromCloudinary } from "../utils/cloudinary.js
 import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose";
+import fs from "fs";
 
 
 const generateAccessAndRefreshTokens = async(userId) =>{
@@ -26,7 +27,7 @@ const generateAccessAndRefreshTokens = async(userId) =>{
 }
 
 
-const registerUser = asyncHandler( async (req, res) => {
+const registerUser = asyncHandler(async (req, res) => {
     // get user details from frontend
     // validation - not empty
     // check if user already exists: username, email
@@ -37,36 +38,47 @@ const registerUser = asyncHandler( async (req, res) => {
     // check for user creation
     // return res
 
-
-    const {fullName, email, username, password } = req.body
-    //console.log("email: ", email);
+    const { fullName, email, username, password } = req.body
 
     if (
-        [fullName, email, username, password].some((field) => field?.trim() === "")
+        [fullName, email, username, password].some(
+            (field) => field?.trim() === ""
+        )
     ) {
         throw new ApiError(400, "All fields are required")
     }
 
-    const existedUser = await User.findOne({
-        $or: [{ username }, { email }]
-    })
+    // Get uploaded file paths first
+    const avatarLocalPath = req.files?.avatar?.[0]?.path
 
-    if (existedUser) {
-        throw new ApiError(409, "User with email or username already exists")
-    }
-    // console.log("req.body =", req.body);
-    // console.log("req.files =", req.files);
-
-    const avatarLocalPath = req.files?.avatar[0]?.path;
-    //const coverImageLocalPath = req.files?.coverImage[0]?.path;
-
-    let coverImageLocalPath;
-    if (req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0) {
+    let coverImageLocalPath
+    if (
+        req.files &&
+        Array.isArray(req.files.coverImage) &&
+        req.files.coverImage.length > 0
+    ) {
         coverImageLocalPath = req.files.coverImage[0].path
     }
 
     if (!avatarLocalPath) {
         throw new ApiError(400, "Avatar file is required")
+    }
+
+    // Check if user already exists
+    const existedUser = await User.findOne({
+        $or: [{ username }, { email }]
+    })
+
+    if (existedUser) {
+        if (avatarLocalPath && fs.existsSync(avatarLocalPath)) {
+            fs.unlinkSync(avatarLocalPath)
+        }
+
+        if (coverImageLocalPath && fs.existsSync(coverImageLocalPath)) {
+            fs.unlinkSync(coverImageLocalPath)
+        }
+
+        throw new ApiError(409, "User with email or username already exists")
     }
 
     const avatar = await uploadOnCloudinary(avatarLocalPath)
@@ -80,7 +92,7 @@ const registerUser = asyncHandler( async (req, res) => {
         fullName,
         avatar: avatar.url,
         coverImage: coverImage?.url || "",
-        email, 
+        email,
         password,
         username: username.toLowerCase()
     })
@@ -90,14 +102,16 @@ const registerUser = asyncHandler( async (req, res) => {
     )
 
     if (!createdUser) {
-        throw new ApiError(500, "Something went wrong while registering the user")
+        throw new ApiError(
+            500,
+            "Something went wrong while registering the user"
+        )
     }
 
     return res.status(201).json(
         new ApiResponse(201, createdUser, "User registered Successfully")
     )
-
-} )
+})
 
 const loginUser = asyncHandler(async (req, res) =>{
     // req body -> data
@@ -269,6 +283,12 @@ const updateAccountDetails = asyncHandler(async(req, res) => {
         throw new ApiError(400, "All fields are required")
     }
 
+    // Check if email is already taken by a different user
+    const existingUser = await User.findOne({ email })
+    if (existingUser && existingUser._id.toString() !== req.user?._id.toString()) {
+        throw new ApiError(409, "Email is already in use by another account")
+    }
+
     const user = await User.findByIdAndUpdate(
         req.user?._id,
         {
@@ -331,6 +351,9 @@ const updateUserAvatar = asyncHandler(async(req, res) => {
 
 const updateUserCoverImage = asyncHandler(async(req, res) => {
     const coverImageLocalPath = req.file?.path
+    console.log("req.file:", req.file);
+    console.log(req.headers);
+    console.log(req.body);
 
     if (!coverImageLocalPath) {
         throw new ApiError(400, "Cover image file is missing")

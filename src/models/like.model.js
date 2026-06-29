@@ -27,9 +27,35 @@ const likeSchema = new Schema({
 // sparse: true is required because video/comment/tweet are all optional
 // fields — without it, MongoDB treats two docs with video: null as
 // duplicates and rejects the second one.
-likeSchema.index({ video: 1, likedBy: 1 }, { unique: true, sparse: true })
-likeSchema.index({ comment: 1, likedBy: 1 }, { unique: true, sparse: true })
-likeSchema.index({ tweet: 1, likedBy: 1 }, { unique: true, sparse: true })
+likeSchema.index(
+    { video: 1, likedBy: 1 },
+    {
+        unique: true,
+        partialFilterExpression: {
+            video: { $type: "objectId" }
+        }
+    }
+)
+
+likeSchema.index(
+    { comment: 1, likedBy: 1 },
+    {
+        unique: true,
+        partialFilterExpression: {
+            comment: { $type: "objectId" }
+        }
+    }
+)
+
+likeSchema.index(
+    { tweet: 1, likedBy: 1 },
+    {
+        unique: true,
+        partialFilterExpression: {
+            tweet: { $type: "objectId" }
+        }
+    }
+)
 
 likeSchema.plugin(mongooseAggregatePaginate)
 

@@ -4,6 +4,7 @@ import { User } from "../models/user.model.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 import { asyncHandler } from "../utils/asyncHandler.js"
+import { removeUploadedFiles } from "../utils/removeTempFiles.js";
 import {
     uploadOnCloudinary,
     deleteFromCloudinary
@@ -109,8 +110,15 @@ const publishAVideo = asyncHandler(async (req, res) => {
     const videoFileLocalPath = req.files?.videoFile?.[0]?.path
     const thumbnailLocalPath = req.files?.thumbnail?.[0]?.path
 
-    if (!videoFileLocalPath) throw new ApiError(400, "Video file is required")
-    if (!thumbnailLocalPath) throw new ApiError(400, "Thumbnail is required")
+    if (!videoFileLocalPath) {
+        removeUploadedFiles(req);
+        throw new ApiError(400, "Video file is required");
+    }
+
+    if (!thumbnailLocalPath) {
+        removeUploadedFiles(req);
+        throw new ApiError(400, "Thumbnail is required");
+    }
 
     const videoFile = await uploadOnCloudinary(videoFileLocalPath)
     const thumbnail = await uploadOnCloudinary(thumbnailLocalPath)
