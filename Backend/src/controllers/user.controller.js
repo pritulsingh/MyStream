@@ -6,6 +6,8 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import jwt from "jsonwebtoken"
 import mongoose from "mongoose";
 import fs from "fs";
+import bcrypt from "bcrypt";
+import { sendEmail } from "../utils/mailer.js";
 
 
 const generateAccessAndRefreshTokens = async(userId) =>{
@@ -25,9 +27,9 @@ const generateAccessAndRefreshTokens = async(userId) =>{
         throw new ApiError(500, "Something went wrong while generating referesh and access token")
     }
 }
-
-
+    
 const registerUser = asyncHandler(async (req, res) => {
+
     // get user details from frontend
     // validation - not empty
     // check if user already exists: username, email
@@ -48,7 +50,6 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new ApiError(400, "All fields are required")
     }
 
-    // Get uploaded file paths first
     const avatarLocalPath = req.files?.avatar?.[0]?.path
 
     let coverImageLocalPath
@@ -64,7 +65,6 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Avatar file is required")
     }
 
-    // Check if user already exists
     const existedUser = await User.findOne({
         $or: [{ username }, { email }]
     })
@@ -73,11 +73,9 @@ const registerUser = asyncHandler(async (req, res) => {
         if (avatarLocalPath && fs.existsSync(avatarLocalPath)) {
             fs.unlinkSync(avatarLocalPath)
         }
-
         if (coverImageLocalPath && fs.existsSync(coverImageLocalPath)) {
             fs.unlinkSync(coverImageLocalPath)
         }
-
         throw new ApiError(409, "User with email or username already exists")
     }
 
@@ -102,16 +100,52 @@ const registerUser = asyncHandler(async (req, res) => {
     )
 
     if (!createdUser) {
-        throw new ApiError(
-            500,
-            "Something went wrong while registering the user"
+        throw new ApiError(500, "Something went wrong while registering the user")
+    }
+
+    // Generate OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString()
+    const hashedOtp = await bcrypt.hash(otp, 10)
+    const otpExpiry = Date.now() + 10 * 60 * 1000 // 10 minutes
+
+    // Try sending email BEFORE saving OTP to DB
+    // If email fails, we don't save a broken OTP state
+    try {
+        await sendEmail(
+            user.email,
+            "Verify your account",
+            `Your OTP is ${otp}. It expires in 10 minutes.`
+        )
+    } catch (error) {
+        // Email failed — user is created but unverified
+        // They can use resend-otp route later
+        console.error("OTP email failed during registration:", error)
+        return res.status(201).json(
+            new ApiResponse(
+                201,
+                { user: createdUser },
+                "User registered but verification email failed. Use /resend-otp to try again."
+            )
         )
     }
 
+    // Email succeeded — now save OTP to DB
+    user.otp = hashedOtp
+    user.otpExpiry = otpExpiry
+    await user.save({ validateBeforeSave: false })
+
+    // Generate access token so user can immediately hit /verify-otp
+    const { accessToken } = await generateAccessAndRefreshTokens(user._id)
+
     return res.status(201).json(
-        new ApiResponse(201, createdUser, "User registered Successfully")
+        new ApiResponse(
+            201,
+            { user: createdUser, accessToken },
+            "User registered successfully. OTP sent to your email."
+        )
     )
 })
+
 
 const loginUser = asyncHandler(async (req, res) =>{
     // req body -> data
@@ -141,13 +175,17 @@ const loginUser = asyncHandler(async (req, res) =>{
         throw new ApiError(404, "User does not exist")
     }
 
-   const isPasswordValid = await user.isPasswordCorrect(password)
+    const isPasswordValid = await user.isPasswordCorrect(password)
 
-   if (!isPasswordValid) {
-    throw new ApiError(401, "Invalid user credentials")
+    if (!isPasswordValid) {
+        throw new ApiError(401, "Invalid user credentials")
     }
 
-   const {accessToken, refreshToken} = await generateAccessAndRefreshTokens(user._id)
+    if (!user.isVerified) {
+        throw new ApiError(403, "Please verify your email before logging in")
+    }
+
+    const {accessToken, refreshToken} = await generateAccessAndRefreshTokens(user._id)
 
     const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
 
@@ -521,6 +559,56 @@ const getWatchHistory = asyncHandler(async(req, res) => {
     )
 })
 
+const sendVerificationOtp = asyncHandler(async (req, res) => {
+    const user = await User.findById(req.user._id)
+
+    if (user.isVerified) {
+        throw new ApiError(400, "User is already verified")
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString()
+    const hashedOtp = await bcrypt.hash(otp, 10)
+    const otpExpiry = Date.now() + 10 * 60 * 1000
+
+    // Send email FIRST before saving to DB
+    try {
+        await sendEmail(
+            user.email,
+            "Verify your account",
+            `Your OTP is ${otp}. It expires in 10 minutes.`
+        )
+    } catch (error) {
+        throw new ApiError(500, "Failed to send OTP email. Please try again.")
+    }
+
+    // Only save to DB after email succeeds
+    user.otp = hashedOtp
+    user.otpExpiry = otpExpiry
+    await user.save({ validateBeforeSave: false })
+
+    return res.status(200).json(
+        new ApiResponse(200, {}, "OTP sent to your email")
+    )
+})
+const verifyOtp = asyncHandler(async (req, res) => {
+    const { otp } = req.body
+    if (!otp) throw new ApiError(400, "OTP is required")
+
+    const user = await User.findById(req.user._id)
+    if (!user.otp || !user.otpExpiry) throw new ApiError(400, "No OTP requested")
+    if (user.otpExpiry < Date.now()) throw new ApiError(400, "OTP expired")
+
+    const isMatch = await bcrypt.compare(otp, user.otp)
+    if (!isMatch) throw new ApiError(400, "Invalid OTP")
+
+    user.isVerified = true
+    user.otp = undefined
+    user.otpExpiry = undefined
+    await user.save({ validateBeforeSave: false })
+
+    return res.status(200).json(new ApiResponse(200, {}, "Account verified successfully"))
+})
+
 
 
 export {
@@ -534,5 +622,7 @@ export {
     updateUserAvatar,
     updateUserCoverImage,
     getUserChannelProfile,
-    getWatchHistory
+    getWatchHistory,
+    sendVerificationOtp,
+    verifyOtp
 }

@@ -162,6 +162,10 @@ const getVideoById = asyncHandler(async (req, res) => {
     // { new: true } is not needed here since we re-fetch via aggregate below.
     await Video.findByIdAndUpdate(videoId, { $inc: { views: 1 } })
 
+    await User.findByIdAndUpdate(req.user._id, {
+        $addToSet: { watchHistory: videoId }
+    })
+
     const video = await Video.aggregate([
         {
             $match: { _id: new mongoose.Types.ObjectId(videoId) }

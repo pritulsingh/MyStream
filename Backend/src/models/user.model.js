@@ -32,7 +32,17 @@ const userSchema = Schema(
             required: true
         },
         coverImage: {
-            type: String // cloudinary url
+            type: String
+        },
+        isVerified: {
+            type: Boolean,
+            default: false
+        },
+        otp: {
+            type: String
+        },
+        otpExpiry: {
+            type: Date
         },
         watchHistory: [
             {
