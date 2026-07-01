@@ -40,6 +40,18 @@ app.use("/api/v1/likes", likeRouter)
 app.use("/api/v1/playlist", playlistRouter)
 app.use("/api/v1/dashboard", dashboardRouter)
 
+app.use((err, req, res, next) => {
+    const statusCode = err.statusCode || err.status || 500
+
+    return res.status(statusCode).json({
+        statusCode,
+        data: null,
+        message: err.message || "Something went wrong",
+        success: false,
+        errors: err.errors || []
+    })
+})
+
 // http://localhost:8000/api/v1/users/register
 
 

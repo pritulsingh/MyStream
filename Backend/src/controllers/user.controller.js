@@ -86,53 +86,50 @@ const registerUser = asyncHandler(async (req, res) => {
         throw new ApiError(500, "Failed to upload avatar to Cloudinary")
     }
 
-    const user = await User.create({
-        fullName,
-        avatar: avatar.url,
-        coverImage: coverImage?.url || "",
-        email,
-        password,
-        username: username.toLowerCase()
-    })
-
-    const createdUser = await User.findById(user._id).select(
-        "-password -refreshToken"
-    )
-
-    if (!createdUser) {
-        throw new ApiError(500, "Something went wrong while registering the user")
-    }
-
     // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString()
     const hashedOtp = await bcrypt.hash(otp, 10)
     const otpExpiry = Date.now() + 10 * 60 * 1000 // 10 minutes
 
-    // Try sending email BEFORE saving OTP to DB
-    // If email fails, we don't save a broken OTP state
     try {
         await sendEmail(
-            user.email,
+            email,
             "Verify your account",
             `Your OTP is ${otp}. It expires in 10 minutes.`
         )
     } catch (error) {
-        // Email failed — user is created but unverified
-        // They can use resend-otp route later
         console.error("OTP email failed during registration:", error)
-        return res.status(201).json(
-            new ApiResponse(
-                201,
-                { user: createdUser },
-                "User registered but verification email failed. Use /resend-otp to try again."
-            )
-        )
+        if (avatar?.url) await deleteFromCloudinary(avatar.url, "image")
+        if (coverImage?.url) await deleteFromCloudinary(coverImage.url, "image")
+        throw new ApiError(500, "Failed to send OTP email. Please check your email address and try again.")
     }
 
-    // Email succeeded — now save OTP to DB
-    user.otp = hashedOtp
-    user.otpExpiry = otpExpiry
-    await user.save({ validateBeforeSave: false })
+    let user
+    try {
+        user = await User.create({
+            fullName,
+            avatar: avatar.url,
+            coverImage: coverImage?.url || "",
+            email,
+            password,
+            username: username.toLowerCase(),
+            otp: hashedOtp,
+            otpExpiry,
+            isVerified: false
+        })
+    } catch (error) {
+        if (avatar?.url) await deleteFromCloudinary(avatar.url, "image")
+        if (coverImage?.url) await deleteFromCloudinary(coverImage.url, "image")
+        throw new ApiError(500, "Something went wrong while registering the user")
+    }
+
+    const createdUser = await User.findById(user._id).select(
+        "-password -refreshToken -otp -otpExpiry"
+    )
+
+    if (!createdUser) {
+        throw new ApiError(500, "Something went wrong while registering the user")
+    }
 
     // Generate access token so user can immediately hit /verify-otp
     const { accessToken } = await generateAccessAndRefreshTokens(user._id)
