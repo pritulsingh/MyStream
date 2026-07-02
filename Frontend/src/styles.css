@@ -1,0 +1,170 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: #0d0f14;
+}
+
+[data-theme="light"] body {
+  background: #f4f6f8;
+}
+
+button,
+input,
+textarea,
+select {
+  border-radius: 0;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+.hero-media {
+  background:
+    linear-gradient(90deg, rgba(13, 15, 20, 0.94) 0%, rgba(13, 15, 20, 0.68) 52%, rgba(13, 15, 20, 0.2) 100%),
+    linear-gradient(0deg, rgba(13, 15, 20, 0.94) 0%, rgba(13, 15, 20, 0) 46%),
+    url("https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&w=1800&q=85");
+  background-position: center;
+  background-size: cover;
+}
+
+.file-input {
+  width: 100%;
+  cursor: pointer;
+  border: 1px solid #252b36;
+  background: #0d0f14;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: white;
+}
+
+.file-input::file-selector-button {
+  margin-right: 0.75rem;
+  border: 0;
+  background: white;
+  padding: 0.5rem 0.75rem;
+  font-weight: 800;
+  color: #0d0f14;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.theme-light.bg-ink,
+.theme-light .bg-ink {
+  background-color: #f4f6f8;
+}
+
+.theme-light .bg-panel {
+  background-color: #ffffff;
+}
+
+.theme-light .bg-flame {
+  background-color: #e94b32;
+}
+
+.theme-light .bg-aqua {
+  background-color: #28c9b9;
+}
+
+.theme-light .bg-white {
+  background-color: #10141b;
+}
+
+.theme-light .text-white {
+  color: #10141b;
+}
+
+.theme-light .text-ink {
+  color: #ffffff;
+}
+
+.theme-light .text-aqua {
+  color: #07897f;
+}
+
+.theme-light .text-flame {
+  color: #d9432c;
+}
+
+.theme-light .text-white\/80,
+.theme-light .text-white\/78,
+.theme-light .text-white\/72,
+.theme-light .text-white\/70,
+.theme-light .text-white\/68,
+.theme-light .text-white\/62,
+.theme-light .text-white\/60,
+.theme-light .text-white\/58,
+.theme-light .text-white\/56,
+.theme-light .text-white\/54,
+.theme-light .text-white\/52,
+.theme-light .text-white\/50,
+.theme-light .text-white\/48,
+.theme-light .text-white\/44,
+.theme-light .text-white\/42 {
+  color: rgba(16, 20, 27, 0.68);
+}
+
+.theme-light .border-line {
+  border-color: #d8dee8;
+}
+
+.theme-light input,
+.theme-light textarea,
+.theme-light select {
+  color: #10141b;
+  background-color: #ffffff;
+}
+
+.theme-light input::placeholder,
+.theme-light textarea::placeholder {
+  color: rgba(16, 20, 27, 0.42);
+}
+
+.theme-light .shadow-glow {
+  box-shadow: 0 20px 80px rgba(16, 20, 27, 0.12);
+}
+
+.theme-light .bg-black,
+.theme-light .bg-black\/70,
+.theme-light .bg-black\/80 {
+  color: #ffffff;
+}
+
+.theme-light .file-input,
+.theme-light input[type="file"] {
+  background-color: #ffffff;
+  color: #10141b;
+  border-color: #d8dee8;
+}
+
+.theme-light .file-input::file-selector-button,
+.theme-light input[type="file"]::file-selector-button {
+  background-color: #10141b;
+  color: #ffffff;
+}
+
+.theme-light .hero-media {
+  background:
+    linear-gradient(90deg, rgba(244, 246, 248, 0.96) 0%, rgba(244, 246, 248, 0.74) 52%, rgba(244, 246, 248, 0.24) 100%),
+    linear-gradient(0deg, rgba(244, 246, 248, 0.96) 0%, rgba(244, 246, 248, 0) 46%),
+    url("https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&w=1800&q=85");
+}

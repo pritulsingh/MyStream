@@ -1,0 +1,2 @@
+export const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "https://mystream-5c3x.onrender.com/api/v1"
