@@ -92,11 +92,7 @@ const registerUser = asyncHandler(async (req, res) => {
     const otpExpiry = Date.now() + 10 * 60 * 1000 // 10 minutes
 
     try {
-        await sendEmail(
-            email,
-            "Verify your account",
-            `Your OTP is ${otp}. It expires in 10 minutes.`
-        )
+        await sendEmail(email, otp)
     } catch (error) {
         console.error("OTP email failed during registration:", error)
         if (avatar?.url) await deleteFromCloudinary(avatar.url, "image")
@@ -569,11 +565,7 @@ const sendVerificationOtp = asyncHandler(async (req, res) => {
 
     // Send email FIRST before saving to DB
     try {
-        await sendEmail(
-            user.email,
-            "Verify your account",
-            `Your OTP is ${otp}. It expires in 10 minutes.`
-        )
+        await sendEmail(user.email, otp)
     } catch (error) {
         throw new ApiError(500, "Failed to send OTP email. Please try again.")
     }
